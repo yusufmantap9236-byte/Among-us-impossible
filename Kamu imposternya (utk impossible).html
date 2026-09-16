@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game ini menguji kecepatan melihat kamu dan ketepatan menentukan mana imposternya looooh!</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; background: #0f0f1a; color: #fff; margin: 0; padding: 10px; user-select: none; }
+        #setup { background: #1e1e2e; padding: 12px; border-radius: 8px; margin-bottom: 10px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; align-items: center; }
+        input, button { padding: 8px 12px; font-weight: bold; border-radius: 6px; border: none; }
+        input { background: #2f3542; color: #fff; }
+        input[type="number"] { width: 50px; text-align: center; }
+        button { background: #ff4757; color: white; cursor: pointer; }
+        
+        #game-board { 
+            position: relative; 
+            width: 100%; 
+            max-width: 500px; 
+            height: 400px; 
+            background: #111; 
+            border: 3px solid #747d8c; 
+            margin: 0 auto; 
+            border-radius: 10px; 
+            overflow: hidden; 
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        #darkness-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 50;
+            display: none;
+            background: #000;
+        }
+
+        #joystick-container {
+            position: absolute; bottom: 15px; right: 15px;
+            width: 80px; height: 80px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%; display: none; z-index: 60;
+            touch-action: none;
+        }
+        #joystick-knob {
+            position: absolute; top: 20px; left: 20px;
+            width: 40px; height: 40px;
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 50%; pointer-events: none;
+        }
+
+        .character { 
+            position: absolute; 
+            width: 24px; 
+            height: 24px; 
+            border-radius: 50%; 
+            border: 2px solid #fff; 
+            cursor: pointer; 
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+
+        #status { font-size: 1rem; margin: 10px; color: #eccc68; font-weight: bold; }
+        .level-badge { background: #ff4757; padding: 5px 10px; border-radius: 4px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h2>🕵️ Who is imposter? <span class="level-badge"> 🧠 🔥 Fokusin otak kamu, cari siapa imposternya!</span></h2>
+    
+    <div id="setup">
+        <div>
+            <label>Pemain: </label>
+            <input type="number" id="player-count" value="10" min="10" max="50">
+        </div>
+        <div>
+            <label>Impostor: </label>
+            <input type="number" id="impos-count" value="1" min="1" max="5">
+        </div>
+        <button onclick="startGame()">Mulai Game!</button>
+    </div>
+
+    <div id="status">Atur jumlah pemain lalu klik Mulai!</div>
+    
+    <div id="game-board">
+        <div id="darkness-overlay"></div>
+        <div id="joystick-container">
+            <div id="joystick-knob"></div>
+        </div>
+    </div>
+
+    <script>
+        const board = document.getElementById('game-board');
+        const statusText = document.getElementById('status');
+        const overlay = document.getElementById('darkness-overlay');
+        const joyContainer = document.getElementById('joystick-container');
+        const joyKnob = document.getElementById('joystick-knob');
+
+        let players = [];
+        let gameLoop, camoLoop, ventLoop;
+        let isGameOver = false;
+        let totalImpostors = 1;
+        let impostorsCaught = 0;
+
+        let isDragging = false;
+        let lightX = 250, lightY = 200;
+        let joyDx = 0, joyDy = 0;
+
+        const colors = ['#ff6b6b', '#1dd1a1', '#54a0ff', '#feca57', '#ff9ff3', '#ffda79', '#48dbfb', '#9b59b6', '#e67e22', '#1abc9c', '#a4b0be', '#57606f'];
+
+        function startJoy(e) {
+            e.preventDefault();
+            isDragging = true;
+            moveJoy(e);
+        }
+
+        function moveJoy(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+            let clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            let clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            let rect = joyContainer.getBoundingClientRect();
+            let cx = rect.left + rect.width / 2;
+            let cy = rect.top + rect.height / 2;
+            
+            let dx = clientX - cx;
+            let dy = clientY - cy;
+            let dist = Math.hypot(dx, dy);
+            let maxDist = 20; 
+            
+            if (dist > maxDist) {
+                dx = (dx / dist) * maxDist;
+                dy = (dy / dist) * maxDist;
+            }
+            
+            joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+            joyDx = dx / maxDist;
+            joyDy = dy / maxDist;
+        }
+
+        function endJoy(e) {
+            isDragging = false;
+            joyKnob.style.transform = `translate(0px, 0px)`;
+            joyDx = 0;
+            joyDy = 0;
+        }
+
+        joyContainer.addEventListener('mousedown', startJoy);
+        window.addEventListener('mousemove', moveJoy);
+        window.addEventListener('mouseup', endJoy);
+        joyContainer.addEventListener('touchstart', startJoy, {passive: false});
+        window.addEventListener('touchmove', moveJoy, {passive: false});
+        window.addEventListener('touchend', endJoy);
+
+        function updateFlashlight(x, y) {
+            overlay.style.webkitMaskImage = `radial-gradient(circle 90px at ${x}px ${y}px, transparent 0%, black 100%)`;
+            overlay.style.maskImage = `radial-gradient(circle 90px at ${x}px ${y}px, transparent 0%, black 100%)`;
+        }
+
+        function clearAllIntervals() {
+            clearInterval(gameLoop);
+            clearInterval(camoLoop);
+            clearInterval(ventLoop);
+        }
+
+        function startGame() {
+            clearAllIntervals();
+            board.querySelectorAll('.character').forEach(el => el.remove());
+            players = [];
+            isGameOver = false;
+            impostorsCaught = 0;
+            
+            let totalPlayersOnBoard = Math.min(Math.max(parseInt(document.getElementById('player-count').value) || 10, 10), 50);
+            totalImpostors = Math.min(Math.max(parseInt(document.getElementById('impos-count').value) || 1, 1), 5);
+            
+            if (totalImpostors >= totalPlayersOnBoard) totalImpostors = totalPlayersOnBoard - 1;
+
+            let speedMultiplier = 2.0; // Kecepatan khusus Impossible
+            
+            overlay.style.display = 'block';
+            joyContainer.style.display = 'block';
+            lightX = board.clientWidth / 2;
+            lightY = board.clientHeight / 2;
+            updateFlashlight(lightX, lightY);
+
+            statusText.textContent = `Cari ${totalImpostors} Impostor! Awas, mereka bisa menyamar & teleport!`;
+            statusText.style.color = "#eccc68";
+
+            let impostorIds = [];
+            while(impostorIds.length < totalImpostors){
+                let r = Math.floor(Math.random() * totalPlayersOnBoard);
+                if(impostorIds.indexOf(r) === -1) impostorIds.push(r);
+            }
+
+            for (let i = 0; i < totalPlayersOnBoard; i++) {
+                const charEl = document.createElement('div');
+                charEl.className = 'character';
+                charEl.style.backgroundColor = colors[i % colors.length];
+                
+                charEl.onclick = (e) => {
+                    e.stopPropagation();
+                    guessPlayer(i);
+                };
+                
+                board.appendChild(charEl);
+
+                players.push({
+                    id: i,
+                    el: charEl,
+                    isImpostor: impostorIds.includes(i),
+                    color: colors[i % colors.length],
+                    x: Math.random() * (board.clientWidth - 30),
+                    y: Math.random() * (board.clientHeight - 30),
+                    dx: (Math.random() - 0.5) * 3 * speedMultiplier,
+                    dy: (Math.random() - 0.5) * 3 * speedMultiplier,
+                    isDead: false,
+                    isCaught: false,
+                    cooldown: Math.random() * 40
+                });
+            }
+
+            gameLoop = setInterval(updateGame, 30);
+
+            // Menyamar tiap 3 detik
+            camoLoop = setInterval(() => {
+                if (isGameOver) return;
+                players.forEach(p => {
+                    if (p.isImpostor && !p.isDead && !p.isCaught) {
+                        p.color = colors[Math.floor(Math.random() * colors.length)];
+                        p.el.style.backgroundColor = p.color;
+                    }
+                });
+            }, 3000);
+
+            // Teleport tiap 5 detik
+            ventLoop = setInterval(() => {
+                if (isGameOver) return;
+                players.forEach(p => {
+                    if (p.isImpostor && !p.isDead && !p.isCaught) {
+                        p.x = Math.random() * (board.clientWidth - 30);
+                        p.y = Math.random() * (board.clientHeight - 30);
+                    }
+                });
+            }, 5000);
+        }
+
+        function updateGame() {
+            if (isGameOver) return;
+
+            if (joyDx !== 0 || joyDy !== 0) {
+                lightX += joyDx * 5;
+                lightY += joyDy * 5;
+                if (lightX < 0) lightX = 0;
+                if (lightX > board.clientWidth) lightX = board.clientWidth;
+                if (lightY < 0) lightY = 0;
+                if (lightY > board.clientHeight) lightY = board.clientHeight;
+                updateFlashlight(lightX, lightY);
+            }
+
+            players.forEach(p => {
+                if (p.isDead || p.isCaught) return;
+
+                p.x += p.dx;
+                p.y += p.dy;
+
+                if (p.x <= 0 || p.x >= board.clientWidth - 24) p.dx *= -1;
+                if (p.y <= 0 || p.y >= board.clientHeight - 24) p.dy *= -1;
+
+                p.el.style.left = p.x + 'px';
+                p.el.style.top = p.y + 'px';
+
+                if (p.cooldown > 0) p.cooldown--;
+
+                if (p.isImpostor && p.cooldown <= 0) {
+                    let nearbyCrewmates = players.filter(target => 
+                        !target.isDead && !target.isCaught && !target.isImpostor && 
+                        Math.hypot(p.x - target.x, p.y - target.y) < 40
+                    );
+
+                    // CUKUP 1 CREWMATE UNTUK DIBUNUH (Total 2 pemain bertemu)
+                    if (nearbyCrewmates.length >= 1) {
+                        let victim = nearbyCrewmates[0];
+                        victim.isDead = true;
+                        victim.el.style.backgroundColor = '#333';
+                        victim.el.style.borderColor = '#ff0000';
+                        victim.el.innerHTML = '🗿';
+                        p.cooldown = 120; // Jeda membunuh agar tidak instan bunuh semua
+
+                        // Cek kondisi kalah
+                        let aliveCrewmates = players.filter(c => !c.isImpostor && !c.isDead);
+                        if (aliveCrewmates.length === 0) {
+                            isGameOver = true;
+                            clearAllIntervals();
+                            overlay.style.display = 'none';
+                            joyContainer.style.display = 'none';
+
+                            statusText.textContent = "☠ KALAH! Semua Crewmate telah terbunuh oleh Impostor!";
+                            statusText.style.color = "#ff4757";
+
+                            players.forEach(imp => {
+                                if (imp.isImpostor) {
+                                    imp.el.innerHTML = '😈';
+                                    imp.el.style.backgroundColor = '#ff0000';
+                                }
+                            });
+                        }
+                    }
+                }
+            });
+        }
+
+        function guessPlayer(id) {
+            if (isGameOver || players[id].isDead || players[id].isCaught) return;
+
+            if (players[id].isImpostor) {
+                players[id].isCaught = true;
+                players[id].el.innerHTML = '🤬';
+                players[id].el.style.backgroundColor = '#ff0000';
+                impostorsCaught++;
+
+                if (impostorsCaught >= totalImpostors) {
+                    isGameOver = true;
+                    clearAllIntervals();
+                    overlay.style.display = 'none';
+                    joyContainer.style.display = 'none';
+                    
+                    statusText.textContent = "🎉 MENANG! Semua Impostor berhasil ditangkap!";
+                    statusText.style.color = "#2ecc71";
+                    
+                    players.forEach(p => {
+                        if (!p.isImpostor && !p.isDead) p.el.innerHTML = '😇';
+                    });
+                } else {
+                    statusText.textContent = `🚨 Kena satu! Sisa ${totalImpostors - impostorsCaught} Impostor lagi!`;
+                    statusText.style.color = "#eccc68";
+                }
+            } else {
+                isGameOver = true;
+                clearAllIntervals();
+                overlay.style.display = 'none';
+                joyContainer.style.display = 'none';
+
+                statusText.textContent = "😈 SALAH TEBAK! Kamu menuduh orang tak bersalah! 😈";
+                statusText.style.color = "#8a2be2";
+
+                players.forEach(p => {
+                    if (p.id === id) {
+                        p.el.innerHTML = '😭'; 
+                        p.el.style.backgroundColor = '#555';
+                    } else if (p.isImpostor) {
+                        p.el.innerHTML = '😈'; 
+                        p.el.style.backgroundColor = '#ff0000';
+                    } else if (!p.isDead && !p.isCaught) {
+                        p.el.innerHTML = '😢'; 
+                    }
+                });
+            }
+        }
+    </script>
+</body>
+</html>
